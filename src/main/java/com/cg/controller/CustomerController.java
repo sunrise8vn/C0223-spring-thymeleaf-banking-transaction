@@ -4,9 +4,12 @@ import com.cg.model.Customer;
 import com.cg.model.Deposit;
 import com.cg.service.customer.ICustomerService;
 import com.cg.service.deposit.IDepositService;
+import com.cg.utils.AppUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -17,6 +20,9 @@ import java.util.Optional;
 @Controller
 @RequestMapping("/customers")
 public class CustomerController {
+
+    @Autowired
+    private AppUtils appUtils;
 
     @Autowired
     private ICustomerService customerService;
@@ -34,7 +40,8 @@ public class CustomerController {
     }
 
     @GetMapping("/create")
-    public String showCreatePage() {
+    public String showCreatePage(Model model) {
+        model.addAttribute("customer", new Customer());
         return "customer/create";
     }
 
@@ -60,7 +67,24 @@ public class CustomerController {
 
 
     @PostMapping("/create")
-    public String doCreate(@ModelAttribute Customer customer) {
+    public String doCreate(Model model, @ModelAttribute Customer customer, BindingResult bindingResult) {
+
+        new Customer().validate(customer, bindingResult);
+
+        if (bindingResult.hasFieldErrors()) {
+            model.addAttribute("hasError", true);
+            return "customer/create";
+        }
+
+        String email = customer.getEmail();
+
+        Boolean existsEmail = customerService.existsByEmail(email);
+
+        if (existsEmail) {
+            model.addAttribute("notValid", true);
+            model.addAttribute("message", "Email đã tồn tại");
+            return "customer/create";
+        }
 
         customer.setId(null);
         customer.setBalance(BigDecimal.ZERO);
@@ -78,19 +102,27 @@ public class CustomerController {
             model.addAttribute("message", "ID khách hàng không tồn tại");
         }
         else {
-            Customer customer = customerOptional.get();
+            try {
+                Customer customer = customerService.deposit(deposit);
+                deposit.setCustomer(customer);
 
-            deposit.setId(null);
-            depositService.save(deposit);
+                model.addAttribute("deposit", deposit);
+            }
+            catch (Exception ex) {
+                return "error/500";
+            }
 
-            BigDecimal currentBalance = customer.getBalance();
-            BigDecimal newBalance = currentBalance.add(deposit.getTransactionAmount());
-            customer.setBalance(newBalance);
-            customerService.save(customer);
+//            Customer customer = customerOptional.get();
 
-            deposit.setCustomer(customer);
-
-            model.addAttribute("deposit", deposit);
+//            deposit.setId(null);
+//            depositService.save(deposit);
+//
+//            BigDecimal currentBalance = customer.getBalance();
+//            BigDecimal newBalance = currentBalance.add(deposit.getTransactionAmount());
+//            customer.setBalance(newBalance);
+//
+//            BigDecimal transactionAmount = deposit.getTransactionAmount();
+//            customerService.incrementBalance(customerId, transactionAmount);
         }
 
         return "customer/deposit";
